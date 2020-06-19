@@ -2,14 +2,17 @@ package com.bennyhuo.github.view
 
 import android.os.Bundle
 import android.view.MenuItem
+import com.apollographql.apollo.ApolloCall
+import com.apollographql.apollo.exception.ApolloException
+import com.apollographql.apollo.rx.RxApollo
 import com.bennyhuo.github.R
+import com.bennyhuo.github.network.apolloClient
 import com.bennyhuo.github.network.entities.Repository
+import com.bennyhuo.github.network.graphql.entities.RepositoryIssueCountQuery
 import com.bennyhuo.github.network.services.ActivityService
 import com.bennyhuo.github.network.services.RepositoryService
 import com.bennyhuo.github.utils.*
-import com.bennyhuo.github.view.common.BaseDetailActivity
 import com.bennyhuo.github.view.common.BaseDetailSwipeFinishableActivity
-import com.bennyhuo.github.view.config.Themer
 import com.bennyhuo.tieguanyin.annotations.ActivityBuilder
 import com.bennyhuo.tieguanyin.annotations.Required
 import kotlinx.android.synthetic.main.activity_repo_details.*
@@ -17,6 +20,8 @@ import kotlinx.android.synthetic.main.app_bar_details.*
 import org.jetbrains.anko.toast
 import retrofit2.Response
 import rx.Subscriber
+import rx.android.schedulers.AndroidSchedulers
+import rx.schedulers.Schedulers
 
 @ActivityBuilder
 class RepoDetailActivity : BaseDetailSwipeFinishableActivity() {
@@ -126,6 +131,34 @@ class RepoDetailActivity : BaseDetailSwipeFinishableActivity() {
                     override fun onError(e: Throwable?) {
                         loadingView.animate().alpha(0f).start()
 
+                    }
+
+                })
+        val watcher = apolloClient.query(RepositoryIssueCountQuery(repository.name, repository.owner.login)).watcher()
+        RxApollo.from(watcher)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe {
+                    it.data()?.let {
+                        issues.content = "open:${it.repository()?.openIssues()?.totalCount()
+                                ?: 0} close:${it.repository()?.closedIssues()?.totalCount() ?: 0}"
+                    }
+                }
+        apolloClient.query(RepositoryIssueCountQuery(repository.name, repository.owner.login))
+                .enqueue(object : ApolloCall.Callback<RepositoryIssueCountQuery.Data>() {
+                    override fun onFailure(e: ApolloException) {
+                        e.printStackTrace()
+                    }
+
+                    override fun onResponse(response: com.apollographql.apollo.api.Response<RepositoryIssueCountQuery.Data>) {
+
+                        runOnUiThread {
+                            response.data()?.let {
+                                issues.content = "open:${it.repository()?.openIssues()?.totalCount()
+                                        ?: 0} close:${it.repository()?.closedIssues()?.totalCount()
+                                        ?: 0}"
+                            }
+                        }
                     }
 
                 })
